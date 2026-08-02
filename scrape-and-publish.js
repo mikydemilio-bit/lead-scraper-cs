@@ -1,17 +1,19 @@
 // Automazione completa: scraping Apify per gruppo -> filtro keyword -> dedup contro
-// lo storico -> aggiorna il file pubblico anonimizzato -> commit + push su GitHub.
-// Pensato per essere lanciato da Task Scheduler ogni 10 giorni, senza intervento umano.
-// Uso: node --env-file=.env scrape-and-publish.js
+// i lead già pubblicati -> aggiorna il file pubblico anonimizzato -> commit + push.
+// Pensato per girare su GitHub Actions (schedule cron giornaliero) che si auto-limita
+// a un'esecuzione reale ogni 10 giorni, cosi' da non consumare credito Apify ogni giorno.
+// Uso: node scrape-and-publish.js (le env var arrivano dai secrets del workflow)
 
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
-if (!APIFY_TOKEN) throw new Error('APIFY_API_TOKEN mancante in .env');
+if (!APIFY_TOKEN) throw new Error('APIFY_API_TOKEN mancante');
 
-const HISTORY_FILE = path.join(__dirname, 'leads-history.json'); // privato, gitignored
+const MIN_DAYS_BETWEEN_RUNS = 10;
 const PUBLIC_FILE = path.join(__dirname, 'docs', 'leads-public.json'); // pubblico, anonimizzato
+const META_FILE = path.join(__dirname, 'docs', 'meta.json'); // pubblico, solo timestamp ultima esecuzione
 
 const GROUPS = [
   { url: 'https://www.facebook.com/groups/socialmediamanagercercasi', label: 'Social Media Manager Cercasi' },
@@ -150,21 +152,25 @@ async function runActorForGroup(groupUrl) {
   return apiFetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&format=json`);
 }
 
-function loadHistory() {
-  if (!fs.existsSync(HISTORY_FILE)) return [];
-  return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8'));
+function loadPublicData() {
+  if (!fs.existsSync(PUBLIC_FILE)) return [];
+  return JSON.parse(fs.readFileSync(PUBLIC_FILE, 'utf-8'));
 }
 
-function saveHistory(history) {
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8');
-}
-
-function savePublicData(history) {
-  const publicData = history
-    .map(h => ({ postUrl: h.postUrl, groupLabel: h.groupLabel, firstSeenAt: h.firstSeenAt }))
-    .sort((a, b) => new Date(b.firstSeenAt) - new Date(a.firstSeenAt));
+function savePublicData(leads) {
+  const sorted = [...leads].sort((a, b) => new Date(b.firstSeenAt) - new Date(a.firstSeenAt));
   fs.mkdirSync(path.dirname(PUBLIC_FILE), { recursive: true });
-  fs.writeFileSync(PUBLIC_FILE, JSON.stringify(publicData, null, 2), 'utf-8');
+  fs.writeFileSync(PUBLIC_FILE, JSON.stringify(sorted, null, 2), 'utf-8');
+}
+
+function loadMeta() {
+  if (!fs.existsSync(META_FILE)) return { lastRunAt: null };
+  return JSON.parse(fs.readFileSync(META_FILE, 'utf-8'));
+}
+
+function saveMeta(meta) {
+  fs.mkdirSync(path.dirname(META_FILE), { recursive: true });
+  fs.writeFileSync(META_FILE, JSON.stringify(meta, null, 2), 'utf-8');
 }
 
 function publishToGitHub() {
@@ -174,15 +180,24 @@ function publishToGitHub() {
     console.log('Nessuna modifica da pubblicare.');
     return;
   }
-  execSync('git add docs/leads-public.json', { cwd });
+  execSync('git add docs/leads-public.json docs/meta.json', { cwd });
   execSync(`git commit -m "Aggiorna lead (${new Date().toISOString().slice(0, 10)})"`, { cwd });
   execSync('git push', { cwd });
   console.log('Pubblicato su GitHub Pages.');
 }
 
 (async () => {
-  const history = loadHistory();
-  const seenUrls = new Set(history.map(h => h.postUrl));
+  const meta = loadMeta();
+  if (meta.lastRunAt) {
+    const daysSinceLastRun = (Date.now() - new Date(meta.lastRunAt).getTime()) / (24 * 60 * 60 * 1000);
+    if (daysSinceLastRun < MIN_DAYS_BETWEEN_RUNS) {
+      console.log(`Ultima esecuzione ${daysSinceLastRun.toFixed(1)} giorni fa, sotto la soglia di ${MIN_DAYS_BETWEEN_RUNS} giorni. Esco senza consumare credito Apify.`);
+      return;
+    }
+  }
+
+  const leads = loadPublicData();
+  const seenUrls = new Set(leads.map(l => l.postUrl));
 
   const errors = [];
   let newCount = 0;
@@ -195,14 +210,11 @@ function publishToGitHub() {
       let newInGroup = 0;
       for (const p of matched) {
         const postUrl = normalizePostUrl(p.postUrl);
-        if (seenUrls.has(postUrl)) continue; // già visto in un run precedente
+        if (seenUrls.has(postUrl)) continue; // già pubblicato in un run precedente
         seenUrls.add(postUrl);
-        history.push({
+        leads.push({
           postUrl,
           groupLabel: g.label,
-          author: p.authorName || 'N/D',
-          date: p.formattedDate || p.timestamp || 'N/D',
-          snippet: (p.text || '').slice(0, 200).replace(/\s+/g, ' '),
           firstSeenAt: new Date().toISOString(),
         });
         newInGroup++;
@@ -215,12 +227,12 @@ function publishToGitHub() {
     }
   }
 
-  saveHistory(history);
-  savePublicData(history);
+  savePublicData(leads);
+  saveMeta({ lastRunAt: new Date().toISOString() });
   publishToGitHub();
 
   console.log(`\nLead nuovi in questo run: ${newCount}`);
-  console.log(`Lead totali nello storico: ${history.length}`);
+  console.log(`Lead totali pubblicati: ${leads.length}`);
   if (errors.length) {
     console.log(`Gruppi con errori: ${errors.map(e => e.group).join(', ')}`);
   }

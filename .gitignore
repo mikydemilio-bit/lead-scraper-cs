@@ -21,3 +21,9 @@ build/
 lead_links_*.txt
 pilot_output.txt
 leads-history.json
+
+# Impostazioni locali Claude Code, specifiche di questa macchina
+.claude/settings.local.json
+
+# Log locale dell'automazione ricorrente
+scrape-log.txt

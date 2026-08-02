@@ -1,0 +1,35 @@
+name: Scrape lead Facebook e pubblica
+
+on:
+  schedule:
+    # Gira ogni giorno alle 8:00 UTC; lo script stesso salta l'esecuzione
+    # reale se non sono ancora passati 10 giorni dall'ultima volta (vedi meta.json).
+    - cron: '0 8 * * *'
+  workflow_dispatch: {} # permette anche l'avvio manuale da GitHub
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configura identità git per il commit automatico
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Esegui scraping e pubblica
+        env:
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          FB_COOKIE_C_USER: ${{ secrets.FB_COOKIE_C_USER }}
+          FB_COOKIE_XS: ${{ secrets.FB_COOKIE_XS }}
+          FB_COOKIE_FR: ${{ secrets.FB_COOKIE_FR }}
+          FB_COOKIE_DATR: ${{ secrets.FB_COOKIE_DATR }}
+        run: node scrape-and-publish.js
