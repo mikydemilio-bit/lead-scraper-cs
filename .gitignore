@@ -1,0 +1,23 @@
+# Variabili d'ambiente e segreti
+.env
+.env.local
+.env.*.local
+
+# Dipendenze
+node_modules/
+venv/
+__pycache__/
+
+# File di sistema
+.DS_Store
+Thumbs.db
+
+# Build e output
+dist/
+build/
+*.log
+
+# Output con dati sensibili (nomi, testo post) - mai pubblici
+lead_links_*.txt
+pilot_output.txt
+leads-history.json

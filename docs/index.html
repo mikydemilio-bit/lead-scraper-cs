@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lead Comunicazione &amp; Social Media</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #666666;
+    --border: #e2e2e2;
+    --accent: #2563eb;
+    --row-hover: #f5f7fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --fg: #eaeaea;
+      --muted: #9a9a9a;
+      --border: #2a2d33;
+      --accent: #6ea8fe;
+      --row-hover: #1c1f24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+  }
+  header {
+    padding: 2rem 1.5rem 1rem;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+  .subtitle { color: var(--muted); font-size: 0.9rem; }
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 1.5rem 3rem;
+  }
+  .stats {
+    display: flex;
+    gap: 1.5rem;
+    margin: 1rem 0 1.5rem;
+    flex-wrap: wrap;
+  }
+  .stat {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    min-width: 120px;
+  }
+  .stat .num { font-size: 1.4rem; font-weight: 600; }
+  .stat .label { font-size: 0.8rem; color: var(--muted); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--muted); font-weight: 500; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.02em; }
+  tr:hover td { background: var(--row-hover); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .empty { color: var(--muted); padding: 2rem 0; text-align: center; }
+  .scroll-wrap { overflow-x: auto; }
+  footer { color: var(--muted); font-size: 0.8rem; margin-top: 2rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Lead Comunicazione &amp; Social Media</h1>
+  <div class="subtitle">Post rilevati nei gruppi Facebook monitorati, aggiornati automaticamente ogni 10 giorni.</div>
+</header>
+<main>
+  <div class="stats" id="stats"></div>
+  <div class="scroll-wrap">
+    <table id="leads-table">
+      <thead>
+        <tr>
+          <th>Rilevato il</th>
+          <th>Gruppo</th>
+          <th>Link al post</th>
+        </tr>
+      </thead>
+      <tbody id="leads-body"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="empty-msg" style="display:none">Nessun lead ancora raccolto.</div>
+  <footer>Dati anonimizzati: nessun nome o testo di post viene pubblicato qui.</footer>
+</main>
+<script>
+  fetch('leads-public.json')
+    .then(r => r.ok ? r.json() : [])
+    .catch(() => [])
+    .then(leads => {
+      const tbody = document.getElementById('leads-body');
+      const statsEl = document.getElementById('stats');
+      const emptyMsg = document.getElementById('empty-msg');
+      const table = document.getElementById('leads-table');
+
+      if (!leads.length) {
+        table.style.display = 'none';
+        emptyMsg.style.display = 'block';
+        return;
+      }
+
+      const byGroup = {};
+      for (const l of leads) byGroup[l.groupLabel] = (byGroup[l.groupLabel] || 0) + 1;
+
+      statsEl.innerHTML = `
+        <div class="stat"><div class="num">${leads.length}</div><div class="label">Lead totali</div></div>
+        <div class="stat"><div class="num">${Object.keys(byGroup).length}</div><div class="label">Gruppi con match</div></div>
+      `;
+
+      for (const lead of leads) {
+        const tr = document.createElement('tr');
+        const date = new Date(lead.firstSeenAt);
+        const dateStr = isNaN(date) ? lead.firstSeenAt : date.toLocaleDateString('it-IT', { year: 'numeric', month: 'short', day: 'numeric' });
+        tr.innerHTML = `
+          <td>${dateStr}</td>
+          <td>${lead.groupLabel}</td>
+          <td><a href="${lead.postUrl}" target="_blank" rel="noopener noreferrer">Apri post ↗</a></td>
+        `;
+        tbody.appendChild(tr);
+      }
+    });
+</script>
+</body>
+</html>
